@@ -1,0 +1,54 @@
+version: 1
+service: Service
+
+middlewares:
+  auth:
+    provides: User
+  ratelimit:
+  admin:
+
+types:
+  User:
+    id: str!
+    name: str!
+  Page:
+    limit: int
+    cursor: str
+  Post:
+    extends: Page
+    id: str!
+    title: str!
+
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+          resp:
+            status: str!
+
+  - prefix: /
+    use: [auth]
+    routes:
+      - POST /login:
+          body:
+            username: str!
+            password: str!
+          resp:
+            token: str!
+      - GET /posts:
+          query:
+            q: str
+            extends: Page
+          header:
+            X-Client-Id: str
+          resp:
+            items: "[]Post!"
+            next_cursor: str
+      - GET /posts/{id}:
+          resp: Post
+      - DELETE /posts/{id}:
+      - GET /posts/{id}/comments:
+          skip: [auth]
+          resp:
+            items: "[]Post!"
