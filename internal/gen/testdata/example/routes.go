@@ -4,123 +4,121 @@ package gen
 
 import (
 	"net/http"
-
-	"github.com/0to1a/apic"
 )
 
 // RegisterRoutes wires svc and mw into mux. Every Middlewares field used by
 // the contract must be non-nil.
-func RegisterRoutes(mux *http.ServeMux, svc Service, mw Middlewares, opts ...apic.Option) error {
+func RegisterRoutes(mux *http.ServeMux, svc Service, mw Middlewares, opts ...Option) error {
 	if err := mw.validate(); err != nil {
 		return err
 	}
-	cfg := apic.NewConfig(opts...)
+	cfg := NewConfig(opts...)
 
 	mux.Handle("GET /health", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &GetHealthRequest{}
-		if err := apic.Bind(r, req); err != nil {
-			apic.WriteError(w, cfg, err)
+		if err := Bind(r, req); err != nil {
+			WriteError(w, cfg, err)
 			return
 		}
 		resp, err := svc.GetHealth(r.Context(), req)
 		if err != nil {
-			apic.WriteError(w, cfg, err)
+			WriteError(w, cfg, err)
 			return
 		}
-		apic.WriteSuccess(w, cfg, resp)
+		WriteSuccess(w, cfg, resp)
 	}))
 
 	mux.Handle("POST /login", mw.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &PostLoginRequest{}
-		if err := apic.Bind(r, req); err != nil {
-			apic.WriteError(w, cfg, err)
+		if err := Bind(r, req); err != nil {
+			WriteError(w, cfg, err)
 			return
 		}
 		authVal, ok := r.Context().Value(ctxKeyAuth).(User)
 		if !ok {
-			apic.WriteError(w, cfg, apic.Errorf(apic.Internal, "middleware %q did not set expected context value", "auth"))
+			WriteError(w, cfg, Errorf(Internal, "middleware %q did not set expected context value", "auth"))
 			return
 		}
 		req.Auth = authVal
 		resp, err := svc.PostLogin(r.Context(), req)
 		if err != nil {
-			apic.WriteError(w, cfg, err)
+			WriteError(w, cfg, err)
 			return
 		}
-		apic.WriteSuccess(w, cfg, resp)
+		WriteSuccess(w, cfg, resp)
 	})))
 
 	mux.Handle("GET /posts", mw.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &GetPostsRequest{}
-		if err := apic.Bind(r, req); err != nil {
-			apic.WriteError(w, cfg, err)
+		if err := Bind(r, req); err != nil {
+			WriteError(w, cfg, err)
 			return
 		}
 		authVal, ok := r.Context().Value(ctxKeyAuth).(User)
 		if !ok {
-			apic.WriteError(w, cfg, apic.Errorf(apic.Internal, "middleware %q did not set expected context value", "auth"))
+			WriteError(w, cfg, Errorf(Internal, "middleware %q did not set expected context value", "auth"))
 			return
 		}
 		req.Auth = authVal
 		resp, err := svc.GetPosts(r.Context(), req)
 		if err != nil {
-			apic.WriteError(w, cfg, err)
+			WriteError(w, cfg, err)
 			return
 		}
-		apic.WriteSuccess(w, cfg, resp)
+		WriteSuccess(w, cfg, resp)
 	})))
 
 	mux.Handle("GET /posts/{id}", mw.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &GetPostsByIDRequest{}
-		if err := apic.Bind(r, req); err != nil {
-			apic.WriteError(w, cfg, err)
+		if err := Bind(r, req); err != nil {
+			WriteError(w, cfg, err)
 			return
 		}
 		authVal, ok := r.Context().Value(ctxKeyAuth).(User)
 		if !ok {
-			apic.WriteError(w, cfg, apic.Errorf(apic.Internal, "middleware %q did not set expected context value", "auth"))
+			WriteError(w, cfg, Errorf(Internal, "middleware %q did not set expected context value", "auth"))
 			return
 		}
 		req.Auth = authVal
 		resp, err := svc.GetPostsByID(r.Context(), req)
 		if err != nil {
-			apic.WriteError(w, cfg, err)
+			WriteError(w, cfg, err)
 			return
 		}
-		apic.WriteSuccess(w, cfg, resp)
+		WriteSuccess(w, cfg, resp)
 	})))
 
 	mux.Handle("DELETE /posts/{id}", mw.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &DeletePostsByIDRequest{}
-		if err := apic.Bind(r, req); err != nil {
-			apic.WriteError(w, cfg, err)
+		if err := Bind(r, req); err != nil {
+			WriteError(w, cfg, err)
 			return
 		}
 		authVal, ok := r.Context().Value(ctxKeyAuth).(User)
 		if !ok {
-			apic.WriteError(w, cfg, apic.Errorf(apic.Internal, "middleware %q did not set expected context value", "auth"))
+			WriteError(w, cfg, Errorf(Internal, "middleware %q did not set expected context value", "auth"))
 			return
 		}
 		req.Auth = authVal
 		if err := svc.DeletePostsByID(r.Context(), req); err != nil {
-			apic.WriteError(w, cfg, err)
+			WriteError(w, cfg, err)
 			return
 		}
-		apic.WriteNoContent(w)
+		WriteNoContent(w)
 	})))
 
 	mux.Handle("GET /posts/{id}/comments", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req := &GetPostsByIDCommentsRequest{}
-		if err := apic.Bind(r, req); err != nil {
-			apic.WriteError(w, cfg, err)
+		if err := Bind(r, req); err != nil {
+			WriteError(w, cfg, err)
 			return
 		}
 		resp, err := svc.GetPostsByIDComments(r.Context(), req)
 		if err != nil {
-			apic.WriteError(w, cfg, err)
+			WriteError(w, cfg, err)
 			return
 		}
-		apic.WriteSuccess(w, cfg, resp)
+		WriteSuccess(w, cfg, resp)
 	}))
 
 	return nil

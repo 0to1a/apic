@@ -1,0 +1,59 @@
+package runtime
+
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+)
+
+type envelope struct {
+	Code    int            `json:"code"`
+	Status  string         `json:"status"`
+	Data    any            `json:"data,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Details map[string]any `json:"details,omitempty"`
+}
+
+// EncodeSuccess writes a success envelope wrapping data. Callers with an
+// empty resp (204) never call this.
+func EncodeSuccess(w io.Writer, data any) error {
+	env := envelope{Code: int(OK), Status: OK.String(), Data: data}
+	return json.NewEncoder(w).Encode(env)
+}
+
+// EncodeStatus writes an error envelope for st.
+func EncodeStatus(w io.Writer, st *Status) error {
+	env := envelope{Code: int(st.Code), Status: st.Code.String(), Message: st.Message, Details: st.Details}
+	return json.NewEncoder(w).Encode(env)
+}
+
+// WriteError resolves err to a *Status, logs the original error when it
+// wasn't already one (so it's never silently swallowed), and writes the
+// mapped HTTP status plus error envelope. Generated route handlers call
+// this on every error path.
+func WriteError(w http.ResponseWriter, cfg *Config, err error) {
+	st := ResolveError(err)
+	if _, ok := err.(*Status); !ok {
+		cfg.Logger.Printf("internal error: %v", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(st.Code.HTTPStatus())
+	_ = cfg.Encoder.Error(w, st)
+}
+
+// WriteSuccess writes a 200 (or the status from a StatusCode() int method
+// on data, PRD §7.2's escape hatch) plus a success envelope wrapping data.
+func WriteSuccess(w http.ResponseWriter, cfg *Config, data any) {
+	status := http.StatusOK
+	if sc, ok := data.(interface{ StatusCode() int }); ok {
+		status = sc.StatusCode()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = cfg.Encoder.Success(w, data)
+}
+
+// WriteNoContent writes a 204 with no body, for routes with an empty resp.
+func WriteNoContent(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNoContent)
+}

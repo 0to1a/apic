@@ -59,21 +59,30 @@ lines of YAML instead of a few files of plumbing.
    route (`getProfile`, `putProfile`, ...) that builds the URL/query/headers,
    sends the JSON body, and throws `ApiError` on a non-2xx response.
 
-### Runtime library
+### Generated runtime
 
-The `apic` Go package (imported by generated code) provides the pieces every
-handler needs at request time:
+`apic generate` writes five runtime files (`bind.go`, `codes.go`, `envelope.go`,
+`options.go`, `status.go`) into the output package alongside `types.go`,
+`service.go`, `middleware.go`, and `routes.go`. The generated package is
+self-contained — it imports only the standard library, never `apic` itself —
+so handlers call `gen.Error` / `gen.Errorf` and reference codes like
+`gen.NotFound` directly:
 
-- `Bind` — decodes `path:`, `query:`, `header:`, and `json:` struct tags out of an
-  `*http.Request`, failing with `InvalidArgument` and a list of missing fields when
-  a required field is absent.
-- `Code` / `Status` — gRPC-style error codes (`NotFound`, `InvalidArgument`,
-  `Unimplemented`, ...) mapped to HTTP status codes, so handlers return typed
-  errors instead of picking status codes by hand.
-- `WriteSuccess` / `WriteError` — encode responses (or errors) into a consistent
-  JSON envelope (`{code, status, data|message, details}`).
-- `Option`s (`WithEncoder`, `WithLogger`) — customize the envelope shape or where
-  unexpected errors get logged, passed into generated `RegisterRoutes`.
+- `gen.Bind` — decodes `path:`, `query:`, `header:`, and `json:` struct tags out
+  of an `*http.Request`, failing with `InvalidArgument` and a list of missing
+  fields when a required field is absent.
+- `gen.Code` / `gen.Status` — gRPC-style error codes (`NotFound`,
+  `InvalidArgument`, `Unimplemented`, ...) mapped to HTTP status codes, so
+  handlers return typed errors instead of picking status codes by hand.
+- `gen.WriteSuccess` / `gen.WriteError` — encode responses (or errors) into a
+  consistent JSON envelope (`{code, status, data|message, details}`).
+- `gen.Option`s (`gen.WithEncoder`, `gen.WithLogger`) — customize the envelope
+  shape or where unexpected errors get logged, passed into generated
+  `RegisterRoutes`.
+
+Every middleware declaring `provides` also gets a `With<Name>` helper (e.g.
+`gen.WithAuth(ctx, principal)`) so middleware defined in another package can
+legally inject the context value the generated routes read.
 
 ## Contract reference
 

@@ -1,4 +1,4 @@
-package apic
+package runtime
 
 // Code is an error code. Numbering matches google.golang.org/grpc/codes so
 // the envelope's "code" field lines up with gRPC status codes without

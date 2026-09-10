@@ -2,10 +2,10 @@ package gen
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/0to1a/apic/internal/contract"
@@ -68,11 +68,11 @@ func TestGenerate_Golden(t *testing.T) {
 	}
 }
 
-// TestGenerate_CompilesAgainstRealRuntime renders the example contract and
-// go-builds the result against the real apic runtime package (not a mock),
-// proving the generator's output is valid Go that actually integrates —
-// this is the design doc's §6 "compile-check" requirement.
-func TestGenerate_CompilesAgainstRealRuntime(t *testing.T) {
+// TestGenerate_SelfContained renders the example contract into its own
+// module (no require/replace of github.com/0to1a/apic at all) and go-builds
+// + go-vets it, proving the generated package is self-contained: it needs
+// nothing from the apic module at build time.
+func TestGenerate_SelfContained(t *testing.T) {
 	files := generateExample(t)
 
 	dir := t.TempDir()
@@ -86,11 +86,7 @@ func TestGenerate_CompilesAgainstRealRuntime(t *testing.T) {
 		}
 	}
 
-	repoRoot, err := filepath.Abs("../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	goMod := fmt.Sprintf("module example.com/testapp\n\ngo 1.22\n\nrequire github.com/0to1a/apic v0.0.0\n\nreplace github.com/0to1a/apic => %s\n", repoRoot)
+	goMod := "module example.com/testapp\n\ngo 1.22\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +96,110 @@ func TestGenerate_CompilesAgainstRealRuntime(t *testing.T) {
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go %v failed: %v\n%s", args, err, out)
+		}
+	}
+
+	cmd := exec.Command("go", "list", "-deps", "./gen")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list -deps ./gen failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "github.com/0to1a/apic") {
+		t.Errorf("generated package must not depend on github.com/0to1a/apic, got deps:\n%s", out)
+	}
+}
+
+// TestGenerate_MiddlewareIntegration proves an external middleware (unable to
+// import anything unexported) can legally inject the context value a
+// generated route with `use: [auth]` expects, via the generated WithAuth
+// helper — the bug §1 of the design doc fixes.
+func TestGenerate_MiddlewareIntegration(t *testing.T) {
+	files := generateExample(t)
+
+	dir := t.TempDir()
+	genDir := filepath.Join(dir, "gen")
+	if err := os.MkdirAll(genDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(genDir, name), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const testSrc = `package gen
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+type stubService struct{ Service }
+
+func (stubService) PostLogin(ctx context.Context, req *PostLoginRequest) (*PostLoginResponse, error) {
+	return &PostLoginResponse{Token: req.Auth.ID}, nil
+}
+
+// authMiddleware lives conceptually outside the gen package (it only uses
+// exported names) but is compiled in-package here for test convenience.
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := WithAuth(r.Context(), User{ID: "u1"})
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func TestAuthMiddlewareInjectsContext(t *testing.T) {
+	mux := http.NewServeMux()
+	mw := Middlewares{Auth: authMiddleware, Ratelimit: passthrough, Admin: passthrough}
+	if err := RegisterRoutes(mux, stubService{}, mw); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("POST", "/login", strings.NewReader("{\"username\":\"a\",\"password\":\"b\"}"))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func passthrough(next http.Handler) http.Handler { return next }
+`
+	if err := os.WriteFile(filepath.Join(genDir, "integration_test.go"), []byte(testSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	goMod := "module example.com/testapp\n\ngo 1.22\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go test ./... failed: %v\n%s", err, out)
+	}
+}
+
+// TestGenerate_WithHelper checks that middleware.go gets a With<Name> helper
+// for every middleware declaring `provides` (auth), and none for those that
+// don't (ratelimit, admin).
+func TestGenerate_WithHelper(t *testing.T) {
+	files := generateExample(t)
+	src := string(files["middleware.go"])
+
+	if !strings.Contains(src, "func WithAuth(ctx context.Context, v User) context.Context {") {
+		t.Errorf("expected a WithAuth helper for the auth middleware (provides: User), got:\n%s", src)
+	}
+	for _, name := range []string{"WithRatelimit", "WithAdmin"} {
+		if strings.Contains(src, "func "+name) {
+			t.Errorf("did not expect a %s helper (no provides), got:\n%s", name, src)
 		}
 	}
 }

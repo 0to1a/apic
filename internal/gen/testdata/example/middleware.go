@@ -3,6 +3,7 @@
 package gen
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 )
@@ -35,3 +36,8 @@ type ctxKey int
 const (
 	ctxKeyAuth ctxKey = 0
 )
+
+// WithAuth returns ctx carrying the User that the "auth" middleware provides.
+func WithAuth(ctx context.Context, v User) context.Context {
+	return context.WithValue(ctx, ctxKeyAuth, v)
+}

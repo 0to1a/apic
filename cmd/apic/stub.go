@@ -90,18 +90,18 @@ func writeStubs(dir, out string, resolved *ir.ContractIR, stdout io.Writer) erro
 	// with a group but zero routes at all (a genuinely degenerate case)
 	// would otherwise leave it unused and fail to compile.
 	if len(resolved.Routes) > 0 {
-		fmt.Fprintf(&b, "import (\n\t\"context\"\n\n\t\"github.com/0to1a/apic\"\n\t%q\n)\n\n", importPath)
+		fmt.Fprintf(&b, "import (\n\t\"context\"\n\n\t%q\n)\n\n", importPath)
 	} else {
-		fmt.Fprintf(&b, "import (\n\t\"github.com/0to1a/apic\"\n\t%q\n)\n\n", importPath)
+		fmt.Fprintf(&b, "import (\n\t%q\n)\n\n", importPath)
 	}
 	fmt.Fprintf(&b, "type serviceImpl struct{}\n\n")
 	for _, r := range resolved.Routes {
 		if r.ResponseType == "" {
-			fmt.Fprintf(&b, "func (serviceImpl) %s(ctx context.Context, req *%s.%s) error {\n\treturn apic.Errorf(apic.Unimplemented, %q)\n}\n\n",
-				r.MethodName, pkgName, r.Request.Name, "TODO: implement "+r.MethodName)
+			fmt.Fprintf(&b, "func (serviceImpl) %s(ctx context.Context, req *%s.%s) error {\n\treturn %s.Errorf(%s.Unimplemented, %q)\n}\n\n",
+				r.MethodName, pkgName, r.Request.Name, pkgName, pkgName, "TODO: implement "+r.MethodName)
 		} else {
-			fmt.Fprintf(&b, "func (serviceImpl) %s(ctx context.Context, req *%s.%s) (*%s.%s, error) {\n\treturn nil, apic.Errorf(apic.Unimplemented, %q)\n}\n\n",
-				r.MethodName, pkgName, r.Request.Name, pkgName, r.ResponseType, "TODO: implement "+r.MethodName)
+			fmt.Fprintf(&b, "func (serviceImpl) %s(ctx context.Context, req *%s.%s) (*%s.%s, error) {\n\treturn nil, %s.Errorf(%s.Unimplemented, %q)\n}\n\n",
+				r.MethodName, pkgName, r.Request.Name, pkgName, r.ResponseType, pkgName, pkgName, "TODO: implement "+r.MethodName)
 		}
 	}
 

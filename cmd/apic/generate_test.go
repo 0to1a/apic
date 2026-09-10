@@ -170,8 +170,8 @@ func TestRunGenerate_StubsWritesServiceGo(t *testing.T) {
 	if !strings.Contains(src, "func (serviceImpl) GetHealth(") {
 		t.Errorf("expected a GetHealth method stub, got:\n%s", src)
 	}
-	if !strings.Contains(src, "apic.Unimplemented") {
-		t.Errorf("expected the stub body to use apic.Unimplemented, got:\n%s", src)
+	if !strings.Contains(src, "gen.Unimplemented") {
+		t.Errorf("expected the stub body to use gen.Unimplemented, got:\n%s", src)
 	}
 	if strings.Contains(src, "func main") {
 		t.Errorf("service.go must not declare func main (the user's own main.go does that), got:\n%s", src)
