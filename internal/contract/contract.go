@@ -71,6 +71,7 @@ type Contract struct {
 	Version     int
 	Service     string
 	Out         string // output directory for generated files; CLI-only. Empty means "no out: key was present" — cmd/apic applies the "gen/" default, not this package.
+	TS          string // path to a single generated TypeScript client file; CLI-only. Empty means "don't generate TS at all" — unlike Out, there is no default.
 	Middlewares []Middleware
 	Types       []TypeDef
 	Groups      []Group
@@ -103,6 +104,8 @@ func Parse(data []byte) (*Contract, error) {
 			c.Service = val.Value
 		case "out":
 			c.Out = val.Value
+		case "ts":
+			c.TS = val.Value
 		case "middlewares":
 			c.Middlewares, err = parseMiddlewares(val)
 		case "types":

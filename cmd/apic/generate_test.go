@@ -71,6 +71,61 @@ func TestRunGenerate_RejectsOutEqualToProjectDir(t *testing.T) {
 	}
 }
 
+func TestRunGenerate_WritesTSFileWhenTSKeyPresent(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, "ts: web/api.ts\n\n"+starterContract)
+
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate(dir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v (stderr: %s)", err, stderr.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "web", "api.ts"))
+	if err != nil {
+		t.Fatalf("expected web/api.ts to exist: %v", err)
+	}
+	if !strings.Contains(string(data), "export function createClient") {
+		t.Errorf("expected generated TS to declare createClient, got:\n%s", data)
+	}
+	if !strings.Contains(stdout.String(), "web/api.ts") {
+		t.Errorf("expected stdout to mention the ts file, got %q", stdout.String())
+	}
+}
+
+func TestRunGenerate_NoTSFileWithoutTSKey(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, starterContract)
+
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate(dir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v (stderr: %s)", err, stderr.String())
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".ts") {
+			t.Errorf("expected no .ts file without a ts: key, found %s", e.Name())
+		}
+	}
+}
+
+func TestRunGenerate_RejectsTSEqualToApicYAML(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, "ts: apic.yaml\n\n"+starterContract)
+
+	var stdout, stderr bytes.Buffer
+	err := runGenerate(dir, false, &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("expected an error for ts: apic.yaml (same file as the contract)")
+	}
+	if !strings.Contains(err.Error(), "must not be the same file as apic.yaml") {
+		t.Errorf("expected a clear ts-equals-apic.yaml error, got %q", err.Error())
+	}
+}
+
 func TestRunGenerate_PrintsAllValidationErrors(t *testing.T) {
 	dir := t.TempDir()
 	writeApicYAML(t, dir, `out: gen/

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/0to1a/apic/internal/gen"
+	"github.com/0to1a/apic/internal/gents"
 )
 
 func newDiffCmd() *cobra.Command {
@@ -50,13 +51,14 @@ func runDiff(dir string, stdout, stderr io.Writer) error {
 	var diffs []string
 	for _, name := range names {
 		want := files[name]
-		got, readErr := os.ReadFile(filepath.Join(out, name))
+		path := filepath.Join(out, name)
+		got, readErr := os.ReadFile(path)
 		if readErr != nil {
-			diffs = append(diffs, name+" (missing)")
+			diffs = append(diffs, path+" (missing)")
 			continue
 		}
 		if !bytes.Equal(got, want) {
-			diffs = append(diffs, name+" (modified)")
+			diffs = append(diffs, path+" (modified)")
 		}
 	}
 
@@ -67,8 +69,22 @@ func runDiff(dir string, stdout, stderr io.Writer) error {
 	if entries, readErr := os.ReadDir(out); readErr == nil {
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !produced[e.Name()] {
-				diffs = append(diffs, e.Name()+" (stale, no longer generated)")
+				diffs = append(diffs, filepath.Join(out, e.Name())+" (stale, no longer generated)")
 			}
+		}
+	}
+
+	if c.TS != "" {
+		wantTS, err := gents.Generate(resolved)
+		if err != nil {
+			fmt.Fprintf(stderr, "generate: %v\n", err)
+			return fmt.Errorf("generate failed")
+		}
+		ts := tsPath(dir, c)
+		if gotTS, readErr := os.ReadFile(ts); readErr != nil {
+			diffs = append(diffs, ts+" (missing)")
+		} else if !bytes.Equal(gotTS, wantTS) {
+			diffs = append(diffs, ts+" (modified)")
 		}
 	}
 
@@ -78,7 +94,7 @@ func runDiff(dir string, stdout, stderr io.Writer) error {
 	}
 	sort.Strings(diffs)
 	for _, name := range diffs {
-		fmt.Fprintf(stderr, "%s: out of date\n", filepath.Join(out, name))
+		fmt.Fprintf(stderr, "%s: out of date\n", name)
 	}
 	return fmt.Errorf("%s is out of date with apic.yaml (%d file(s))", out, len(diffs))
 }

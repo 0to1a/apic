@@ -3,7 +3,21 @@ package ir
 import (
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
+
+// Untitle lowercases the first rune of s. Shared by the Go and TypeScript
+// codegen templates to derive a local variable name (Go: "Auth" -> "auth")
+// or client method name (TS: "GetProfile" -> "getProfile") from a Go-style
+// PascalCase identifier.
+func Untitle(s string) string {
+	if s == "" {
+		return s
+	}
+	r, size := utf8.DecodeRuneInString(s)
+	return string(unicode.ToLower(r)) + s[size:]
+}
 
 // toPascalCase turns a snake_case, kebab-case, or plain contract identifier
 // into a Go exported name, e.g. "next_cursor" -> "NextCursor", "id" -> "ID",

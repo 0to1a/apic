@@ -10,6 +10,7 @@ import (
 
 	"github.com/0to1a/apic/internal/contract"
 	"github.com/0to1a/apic/internal/gen"
+	"github.com/0to1a/apic/internal/gents"
 	"github.com/0to1a/apic/internal/ir"
 )
 
@@ -61,6 +62,12 @@ func loadAndResolve(dir string, stderr io.Writer) (*contract.Contract, *ir.Contr
 		return nil, nil, fmt.Errorf("out: %q must not be the same directory as apic.yaml — generated files would collide with service.go and apic.yaml itself", c.Out)
 	}
 
+	if c.TS != "" {
+		if ts := tsPath(dir, c); filepath.Clean(ts) == filepath.Clean(path) {
+			return nil, nil, fmt.Errorf("ts: %q must not be the same file as apic.yaml", c.TS)
+		}
+	}
+
 	return c, resolved, nil
 }
 
@@ -72,6 +79,13 @@ func outDir(dir string, c *contract.Contract) string {
 		out = "gen/"
 	}
 	return filepath.Join(dir, out)
+}
+
+// tsPath returns c.TS resolved against dir. Callers must only call this
+// when c.TS != "" — unlike outDir, there is no default: an empty ts: means
+// "don't generate TS at all".
+func tsPath(dir string, c *contract.Contract) string {
+	return filepath.Join(dir, c.TS)
 }
 
 // runGenerate implements `apic generate`: parse, validate, resolve, then
@@ -98,6 +112,22 @@ func runGenerate(dir string, stubs bool, stdout, stderr io.Writer) error {
 		}
 	}
 	fmt.Fprintf(stdout, "generated %d files in %s/\n", len(files), out)
+
+	if c.TS != "" {
+		tsContent, err := gents.Generate(resolved)
+		if err != nil {
+			fmt.Fprintf(stderr, "generate: %v\n", err)
+			return fmt.Errorf("generate failed")
+		}
+		ts := tsPath(dir, c)
+		if err := os.MkdirAll(filepath.Dir(ts), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(ts, tsContent, 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "generated %s\n", ts)
+	}
 
 	if stubs {
 		if err := writeStubs(dir, out, resolved, stdout); err != nil {

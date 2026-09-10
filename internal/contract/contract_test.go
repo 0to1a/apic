@@ -169,3 +169,34 @@ func TestParse_OutFieldDefaultsToEmpty(t *testing.T) {
 		t.Fatalf("Out = %q, want empty string (no default applied by contract.Parse)", c.Out)
 	}
 }
+
+func TestParse_TSField(t *testing.T) {
+	doc := `
+ts: web/src/lib/gen/api.ts
+
+version: 1
+service: Service
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+`
+	c, err := Parse([]byte(doc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.TS != "web/src/lib/gen/api.ts" {
+		t.Fatalf("TS = %q, want %q", c.TS, "web/src/lib/gen/api.ts")
+	}
+}
+
+func TestParse_TSFieldDefaultsToEmpty(t *testing.T) {
+	c, err := Parse([]byte(example))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.TS != "" {
+		t.Fatalf("TS = %q, want empty string (no TS generated unless ts: is present)", c.TS)
+	}
+}

@@ -49,8 +49,15 @@ lines of YAML instead of a few files of plumbing.
    `apic.Unimplemented`) and pass it to `RegisterRoutes`.
 
 5. **Keep contract and code in sync** with `apic diff`, which regenerates in memory
-   and exits non-zero if the checked-in `gen/` package has drifted from
-   `apic.yaml` — useful as a CI check.
+   and exits non-zero if the checked-in `gen/` package (and, if declared, the `ts:`
+   client file) has drifted from `apic.yaml` — useful as a CI check.
+
+6. **Optionally generate a TypeScript client** by adding `ts: path/to/api.ts` to
+   `apic.yaml`. This writes one dependency-free `.ts` file: an interface per type
+   and per route's request/response, an `ApiError` class for the error envelope,
+   and `createClient({ baseUrl, headers, onError })` returning one method per
+   route (`getProfile`, `putProfile`, ...) that builds the URL/query/headers,
+   sends the JSON body, and throws `ApiError` on a non-2xx response.
 
 ### Runtime library
 
@@ -76,7 +83,8 @@ Top-level keys in `apic.yaml`:
 |---|---|---|
 | `version` | yes | Contract format version (currently `1`). |
 | `service` | yes | Name of the generated `Service` interface. |
-| `out` | no | Output directory for generated files (default `gen/`). CLI-only, ignored by the parser itself. |
+| `out` | no | Output directory for generated Go files (default `gen/`). CLI-only, ignored by the parser itself. |
+| `ts` | no | Path to a single generated TypeScript client file (e.g. `web/src/lib/gen/api.ts`). CLI-only; omit to skip TS generation entirely — no default. |
 | `middlewares` | no | Named middlewares routes can `use`/`skip`. |
 | `types` | no | Named, reusable field sets. |
 | `groups` | yes | Route groups, each with a path `prefix` and its own `routes`. |
@@ -142,7 +150,7 @@ full design/validation rules (§5.6).
 | `apic` | Bootstrap + generate in one step (init if `apic.yaml` is missing, then generate). |
 | `apic init` | Write a starter `apic.yaml` (`--force` to overwrite). |
 | `apic generate` | Parse, validate, and regenerate the `gen/` package (`--stubs` to also scaffold `service.go`). |
-| `apic diff` | Check whether `gen/` is up to date with `apic.yaml`; non-zero exit on drift. |
+| `apic diff` | Check whether `gen/` (and the `ts:` file, if declared) is up to date with `apic.yaml`; non-zero exit on drift. |
 
 ## License
 

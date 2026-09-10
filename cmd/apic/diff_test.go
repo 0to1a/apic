@@ -97,6 +97,72 @@ func TestRunDiff_IgnoresNonGoFiles(t *testing.T) {
 	}
 }
 
+func TestRunDiff_DetectsModifiedTSFile(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, "ts: web/api.ts\n\n"+starterContract)
+
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate(dir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+
+	tsPath := filepath.Join(dir, "web", "api.ts")
+	if err := os.WriteFile(tsPath, []byte("// tampered\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err := runDiff(dir, &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("expected an error for an out-of-date ts: file")
+	}
+	if !strings.Contains(stderr.String(), "api.ts") {
+		t.Errorf("expected api.ts to be named in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRunDiff_DetectsMissingTSFile(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, "ts: web/api.ts\n\n"+starterContract)
+
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate(dir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, "web", "api.ts")); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := runDiff(dir, &stdout, &stderr); err == nil {
+		t.Fatalf("expected an error for a missing ts: file")
+	}
+	if !strings.Contains(stderr.String(), "api.ts") {
+		t.Errorf("expected api.ts to be named in stderr, got %q", stderr.String())
+	}
+}
+
+func TestRunDiff_IgnoresTSWithoutTSKey(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, starterContract)
+
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate(dir, false, &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if err := runDiff(dir, &stdout, &stderr); err != nil {
+		t.Fatalf("runDiff: %v (stderr: %s)", err, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "up to date" {
+		t.Fatalf("stdout = %q, want \"up to date\"", stdout.String())
+	}
+}
+
 func TestRunDiff_NeverTouchesServiceGo(t *testing.T) {
 	dir := t.TempDir()
 	writeApicYAML(t, dir, starterContract)
