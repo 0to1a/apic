@@ -3,6 +3,7 @@ package ir
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/0to1a/apic/internal/contract"
 )
@@ -150,6 +151,41 @@ func Validate(c *contract.Contract) []error {
 			} else {
 				checkFields(where, "resp", r.Resp.Fields, nil)
 			}
+		}
+	}
+
+	// Crons are checked after every route, so a route always stays the first
+	// owner of a method name and the collision message reads the same way.
+	seenCronNames := map[string]bool{}
+	for _, cr := range c.Crons {
+		where := fmt.Sprintf("cron %q", cr.Name)
+		if cr.Name == "" {
+			errs = append(errs, &ValidationError{Line: cr.Loc.Line, Message: "cron name must not be empty"})
+			continue
+		}
+		if seenCronNames[cr.Name] {
+			errs = append(errs, &ValidationError{Line: cr.Loc.Line, Message: fmt.Sprintf("duplicate cron %q", cr.Name), Suggestion: "give each cron job a unique name"})
+		}
+		seenCronNames[cr.Name] = true
+
+		switch d, err := time.ParseDuration(cr.Every); {
+		case cr.Every == "":
+			errs = append(errs, &ValidationError{Line: cr.Loc.Line, Message: fmt.Sprintf("%s: \"every\" is required", where), Suggestion: "add every: 1h (a Go duration: 30s, 5m, 1h, 1h30m)"})
+		case err != nil:
+			errs = append(errs, &ValidationError{Line: cr.Loc.Line, Message: fmt.Sprintf("%s: invalid every %q", where, cr.Every), Suggestion: "use a Go duration like 30s, 5m, 1h"})
+		case d <= 0:
+			errs = append(errs, &ValidationError{Line: cr.Loc.Line, Message: fmt.Sprintf("%s: every %q must be greater than zero", where, cr.Every)})
+		}
+
+		methodName := cronMethodName(cr)
+		if first, dup := seenMethodNames[methodName]; dup {
+			errs = append(errs, &ValidationError{
+				Line:       cr.Loc.Line,
+				Message:    fmt.Sprintf("method name %q already used by %s", methodName, first),
+				Suggestion: fmt.Sprintf("add name: <Something> to %s to disambiguate", where),
+			})
+		} else {
+			seenMethodNames[methodName] = where
 		}
 	}
 

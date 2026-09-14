@@ -3,6 +3,7 @@ package ir
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/0to1a/apic/internal/contract"
 )
@@ -241,6 +242,22 @@ func Resolve(c *contract.Contract) (*ContractIR, error) {
 			out.Types = append(out.Types, extra...)
 			out.Routes = append(out.Routes, route)
 		}
+	}
+
+	for _, cr := range c.Crons {
+		// Validate already rejected anything unparseable; this only fires
+		// if Resolve was called without it.
+		every, err := time.ParseDuration(cr.Every)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: cron %q: invalid every %q", cr.Loc.Line, cr.Name, cr.Every)
+		}
+		out.Crons = append(out.Crons, CronIR{
+			Label:      cr.Name,
+			MethodName: cronMethodName(cr),
+			Every:      every,
+			EverySrc:   cr.Every,
+			OnStart:    cr.OnStart,
+		})
 	}
 	return out, nil
 }

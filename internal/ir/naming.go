@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/0to1a/apic/internal/contract"
 )
 
 // Untitle lowercases the first rune of s. Shared by the Go and TypeScript
@@ -72,6 +74,16 @@ func defaultMethodName(method, path string) string {
 		b.WriteString(toPascalCase(seg))
 	}
 	return b.String()
+}
+
+// cronMethodName computes the Service method name for a cron job: the
+// explicit `name:` override when present, otherwise PascalCase of the job
+// name ("cleanup-sessions" -> "CleanupSessions").
+func cronMethodName(c contract.Cron) string {
+	if c.Method != "" {
+		return c.Method
+	}
+	return toPascalCase(c.Name)
 }
 
 func baseGoType(name string) GoType {

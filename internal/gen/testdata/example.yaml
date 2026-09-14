@@ -19,6 +19,14 @@ types:
     id: str!
     title: str!
 
+crons:
+  - cleanup-sessions:
+      every: 1h
+      on_start: true
+  - sync-inventory:
+      every: 30s
+      name: SyncStock
+
 groups:
   - prefix: /
     use: []

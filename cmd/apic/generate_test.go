@@ -275,3 +275,32 @@ func writeTestGoMod(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 }
+
+// TestRunGenerate_CronStubsCompile checks that --stubs implements the cron
+// methods `crons:` adds to the Service interface, and that the result still
+// compiles against the generated package.
+func TestRunGenerate_CronStubsCompile(t *testing.T) {
+	dir := t.TempDir()
+	writeApicYAML(t, dir, starterContract+"\ncrons:\n  - cleanup-sessions:\n      every: 1h\n      on_start: true\n")
+	writeTestGoMod(t, dir)
+	writeTestMainGo(t, dir)
+
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate(dir, true, &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v (stderr: %s)", err, stderr.String())
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "service.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "func (serviceImpl) CleanupSessions(ctx context.Context) error {") {
+		t.Errorf("expected a CleanupSessions stub, got:\n%s", data)
+	}
+
+	cmd := exec.Command("go", "build", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./... in %s failed: %v\n%s", dir, err, out)
+	}
+}

@@ -45,6 +45,7 @@ func Generate(c *ir.ContractIR) (map[string][]byte, error) {
 		"service.go":    serviceTmpl,
 		"middleware.go": middlewareTmpl,
 		"routes.go":     routesTmpl,
+		"crons.go":      cronsTmpl,
 	}
 	out := make(map[string][]byte, len(files))
 	for name, tmpl := range files {

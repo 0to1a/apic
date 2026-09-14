@@ -46,6 +46,17 @@ type Route struct {
 	Loc    Loc
 }
 
+// Cron is one entry under the top-level `crons:` key: a job name plus the
+// interval it runs at. Every is kept as the raw contract string — parsing it
+// into a time.Duration is ir.Validate's job, like every other semantic rule.
+type Cron struct {
+	Name    string // job name as written, e.g. "cleanup-sessions"
+	Every   string // raw duration expr, e.g. "1h"
+	OnStart bool   // run once at RunCrons start, before the first tick
+	Method  string // `name:` override for the Service method; "" means derive it
+	Loc     Loc
+}
+
 type Group struct {
 	Prefix    string
 	Use       []string
@@ -74,6 +85,7 @@ type Contract struct {
 	TS          string // path to a single generated TypeScript client file; CLI-only. Empty means "don't generate TS at all" — unlike Out, there is no default.
 	Middlewares []Middleware
 	Types       []TypeDef
+	Crons       []Cron
 	Groups      []Group
 }
 
@@ -110,6 +122,8 @@ func Parse(data []byte) (*Contract, error) {
 			c.Middlewares, err = parseMiddlewares(val)
 		case "types":
 			c.Types, err = parseTypeDefs(val)
+		case "crons":
+			c.Crons, err = parseCrons(val)
 		case "groups":
 			c.Groups, err = parseGroups(val)
 		default:
@@ -311,6 +325,47 @@ func parseMiddlewares(node *yaml.Node) ([]Middleware, error) {
 		mws = append(mws, m)
 	}
 	return mws, nil
+}
+
+// parseCrons reads the top-level `crons:` sequence. Same shape as routes: a
+// list of single-entry mappings, key = job name, value = the job's keys (or
+// null when it has none, which ir.Validate then rejects for lacking `every`).
+func parseCrons(seq *yaml.Node) ([]Cron, error) {
+	if seq.Kind != yaml.SequenceNode {
+		return nil, fmt.Errorf("line %d: crons must be a list", seq.Line)
+	}
+	var crons []Cron
+	for _, item := range seq.Content {
+		if item.Kind != yaml.MappingNode || len(item.Content) != 2 {
+			return nil, fmt.Errorf("line %d: cron must be written \"job-name:\" followed by its keys (note the trailing colon)", item.Line)
+		}
+		keyNode, valNode := item.Content[0], item.Content[1]
+		cr := Cron{Name: keyNode.Value, Loc: Loc{keyNode.Line, keyNode.Column}}
+		if !isNull(valNode) {
+			if valNode.Kind != yaml.MappingNode {
+				return nil, fmt.Errorf("line %d: cron body must be a mapping", valNode.Line)
+			}
+			for i := 0; i < len(valNode.Content); i += 2 {
+				k, v := valNode.Content[i], valNode.Content[i+1]
+				switch k.Value {
+				case "every":
+					cr.Every = v.Value
+				case "name":
+					cr.Method = v.Value
+				case "on_start":
+					b, err := strconv.ParseBool(v.Value)
+					if err != nil {
+						return nil, fmt.Errorf("line %d: on_start must be true or false", v.Line)
+					}
+					cr.OnStart = b
+				default:
+					return nil, fmt.Errorf("line %d: unknown cron key %q", k.Line, k.Value)
+				}
+			}
+		}
+		crons = append(crons, cr)
+	}
+	return crons, nil
 }
 
 func parseTypeDefs(node *yaml.Node) ([]TypeDef, error) {

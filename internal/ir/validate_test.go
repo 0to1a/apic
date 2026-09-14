@@ -134,3 +134,96 @@ groups:
 `)
 	assertOneError(t, errs, `field "id" collides with path parameter {id}`)
 }
+
+const cronHead = `
+version: 1
+service: Service
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+`
+
+func TestValidate_CronEveryMissing(t *testing.T) {
+	errs := validateYAML(t, cronHead+`
+crons:
+  - cleanup:
+`)
+	assertOneError(t, errs, `cron "cleanup": "every" is required`)
+}
+
+func TestValidate_CronEveryInvalid(t *testing.T) {
+	errs := validateYAML(t, cronHead+`
+crons:
+  - cleanup:
+      every: every hour
+`)
+	assertOneError(t, errs, `cron "cleanup": invalid every "every hour"`)
+}
+
+func TestValidate_CronEveryNotPositive(t *testing.T) {
+	errs := validateYAML(t, cronHead+`
+crons:
+  - cleanup:
+      every: 0s
+`)
+	assertOneError(t, errs, `must be greater than zero`)
+}
+
+func TestValidate_CronDuplicateName(t *testing.T) {
+	errs := validateYAML(t, cronHead+`
+crons:
+  - cleanup:
+      every: 1h
+  - cleanup:
+      every: 2h
+`)
+	assertOneError(t, errs, `duplicate cron "cleanup"`)
+}
+
+func TestValidate_CronMethodNameCollidesWithRoute(t *testing.T) {
+	errs := validateYAML(t, `
+version: 1
+service: Service
+crons:
+  - get-health:
+      every: 1h
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+`)
+	assertOneError(t, errs, `method name "GetHealth" already used by GET /health`)
+}
+
+func TestValidate_CronMethodNameCollidesWithOtherCron(t *testing.T) {
+	errs := validateYAML(t, cronHead+`
+crons:
+  - cleanup-sessions:
+      every: 1h
+  - cleanup_sessions:
+      every: 2h
+`)
+	assertOneError(t, errs, `method name "CleanupSessions" already used by cron "cleanup-sessions"`)
+}
+
+func TestValidate_CronNameOverrideResolvesCollision(t *testing.T) {
+	errs := validateYAML(t, `
+version: 1
+service: Service
+crons:
+  - get-health:
+      every: 1h
+      name: RefreshHealth
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+`)
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+}

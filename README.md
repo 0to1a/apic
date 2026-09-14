@@ -63,7 +63,7 @@ lines of YAML instead of a few files of plumbing.
 
 `apic generate` writes five runtime files (`bind.go`, `codes.go`, `envelope.go`,
 `options.go`, `status.go`) into the output package alongside `types.go`,
-`service.go`, `middleware.go`, and `routes.go`. The generated package is
+`service.go`, `middleware.go`, `routes.go`, and `crons.go`. The generated package is
 self-contained — it imports only the standard library, never `apic` itself —
 so handlers call `gen.Error` / `gen.Errorf` and reference codes like
 `gen.NotFound` directly:
@@ -95,6 +95,7 @@ Top-level keys in `apic.yaml`:
 | `out` | no | Output directory for generated Go files (default `gen/`). CLI-only, ignored by the parser itself. |
 | `ts` | no | Path to a single generated TypeScript client file (e.g. `web/src/lib/gen/api.ts`). CLI-only; omit to skip TS generation entirely — no default. |
 | `middlewares` | no | Named middlewares routes can `use`/`skip`. |
+| `crons` | no | Periodic jobs, run in-process by the generated `RunCrons`. |
 | `types` | no | Named, reusable field sets. |
 | `groups` | yes | Route groups, each with a path `prefix` and its own `routes`. |
 
@@ -132,6 +133,44 @@ middlewares:
 A group applies middlewares via `use: [auth, ratelimit]`; an individual route can
 add more with its own `use:` or opt out of a group-level one with `skip: [auth]`
 (only valid for middlewares the group already `use`s).
+
+**Crons:**
+
+```yaml
+crons:
+  - cleanup-sessions:
+      every: 1h
+      on_start: true
+  - sync-inventory:
+      every: 30s
+      name: SyncStock
+```
+
+Each entry is a job name followed by its keys, same shape as a route line:
+
+| Key | Meaning |
+|---|---|
+| `every` | Required. Interval as a Go duration (`30s`, `5m`, `1h`, `1h30m`). Must be greater than zero. |
+| `on_start` | Run the job once when `RunCrons` starts, without waiting for the first tick. Default `false`. |
+| `name` | Overrides the generated method name (default: PascalCase of the job name, `cleanup-sessions` → `CleanupSessions`). |
+
+Jobs become extra methods on the same `Service` interface your routes use —
+`CleanupSessions(ctx context.Context) error` — so one implementation carries both,
+and `apic generate --stubs` scaffolds them too. Run them alongside the routes:
+
+```go
+go gen.RunCrons(ctx, svc)
+gen.RegisterRoutes(mux, svc, mw)
+```
+
+`RunCrons` blocks until `ctx` is cancelled, then waits for jobs still in flight.
+Each job gets its own goroutine and ticker, so a job slower than its own interval
+delays its next tick rather than overlapping with itself. Errors are logged
+through the same `gen.WithLogger` option `RegisterRoutes` takes.
+
+Scheduling is per process, with no coordination between them: **every replica runs
+every job**. A job that must run once globally needs a lock of your own (a database
+advisory lock, a leader election) inside the handler.
 
 **Routes** are `"METHOD /path":` entries (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`)
 under a group's `routes:` list, each with:

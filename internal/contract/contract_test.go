@@ -1,6 +1,9 @@
 package contract
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const example = `
 version: 1
@@ -198,5 +201,73 @@ func TestParse_TSFieldDefaultsToEmpty(t *testing.T) {
 	}
 	if c.TS != "" {
 		t.Fatalf("TS = %q, want empty string (no TS generated unless ts: is present)", c.TS)
+	}
+}
+
+func TestParse_Crons(t *testing.T) {
+	doc := `
+version: 1
+service: Service
+crons:
+  - cleanup-sessions:
+      every: 1h
+      on_start: true
+  - sync-inventory:
+      every: 30s
+      name: SyncStock
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+`
+	c, err := Parse([]byte(doc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []Cron{
+		{Name: "cleanup-sessions", Every: "1h", OnStart: true, Loc: Loc{Line: 5, Col: 5}},
+		{Name: "sync-inventory", Every: "30s", Method: "SyncStock", Loc: Loc{Line: 8, Col: 5}},
+	}
+	if len(c.Crons) != len(want) {
+		t.Fatalf("got %d crons, want %d: %+v", len(c.Crons), len(want), c.Crons)
+	}
+	for i, w := range want {
+		if c.Crons[i] != w {
+			t.Errorf("cron %d = %+v, want %+v", i, c.Crons[i], w)
+		}
+	}
+}
+
+func TestParse_CronsDefaultsToEmpty(t *testing.T) {
+	c, err := Parse([]byte(example))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(c.Crons) != 0 {
+		t.Fatalf("Crons = %+v, want empty (no crons: key present)", c.Crons)
+	}
+}
+
+func TestParse_CronErrors(t *testing.T) {
+	const head = "version: 1\nservice: Service\ngroups:\n  - prefix: /\n    use: []\n    routes:\n      - GET /health:\n"
+	tests := []struct {
+		name, crons, want string
+	}{
+		{"on_start not a bool", "crons:\n  - job:\n      every: 1h\n      on_start: yesterday\n", "on_start must be true or false"},
+		{"unknown key", "crons:\n  - job:\n      every: 1h\n      timezone: UTC\n", `unknown cron key "timezone"`},
+		{"not a list", "crons:\n  job:\n    every: 1h\n", "crons must be a list"},
+		{"body not a mapping", "crons:\n  - job: 1h\n", "cron body must be a mapping"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse([]byte(head + tt.crons))
+			if err == nil {
+				t.Fatalf("expected an error containing %q, got nil", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want it to contain %q", err, tt.want)
+			}
+		})
 	}
 }

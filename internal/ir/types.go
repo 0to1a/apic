@@ -1,5 +1,7 @@
 package ir
 
+import "time"
+
 // GoType describes the Go type a contract type expression resolves to.
 type GoType struct {
 	Kind string  // "string", "int64", "float64", "bool", "named", "slice"
@@ -64,10 +66,20 @@ type RouteIR struct {
 	Middlewares  []MiddlewareIR
 }
 
+// CronIR is one resolved cron job, ready for codegen.
+type CronIR struct {
+	Label      string        // job name as written, used in log messages
+	MethodName string        // Service interface method name
+	Every      time.Duration // already validated to be > 0
+	EverySrc   string        // the raw contract expr, rendered as a comment
+	OnStart    bool
+}
+
 // ContractIR is the fully resolved contract, ready for codegen.
 type ContractIR struct {
 	ServiceName string
 	Middlewares []MiddlewareIR
 	Types       []StructIR // named types plus auto-named inline request/response types
 	Routes      []RouteIR
+	Crons       []CronIR
 }

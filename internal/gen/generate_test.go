@@ -38,6 +38,46 @@ func generateExample(t *testing.T) map[string][]byte {
 	return files
 }
 
+func generateYAML(t *testing.T, doc string) map[string][]byte {
+	t.Helper()
+	c, err := contract.Parse([]byte(doc))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if errs := ir.Validate(c); len(errs) != 0 {
+		t.Fatalf("Validate: %v", errs)
+	}
+	resolved, err := ir.Resolve(c)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	files, err := Generate(resolved)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	return files
+}
+
+// writeModule writes files into dir/gen inside a throwaway module, so the
+// generated package can be built and tested on its own.
+func writeModule(t *testing.T, files map[string][]byte) string {
+	t.Helper()
+	dir := t.TempDir()
+	genDir := filepath.Join(dir, "gen")
+	if err := os.MkdirAll(genDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(genDir, name), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/testapp\n\ngo 1.22\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // TestGenerate_Golden compares Generate's output for testdata/example.yaml
 // against the committed golden files in testdata/example/. Run with
 // -update to (re)write them after an intentional codegen change.
@@ -200,6 +240,105 @@ func TestGenerate_WithHelper(t *testing.T) {
 	for _, name := range []string{"WithRatelimit", "WithAdmin"} {
 		if strings.Contains(src, "func "+name) {
 			t.Errorf("did not expect a %s helper (no provides), got:\n%s", name, src)
+		}
+	}
+}
+
+// TestGenerate_CronIntegration runs the generated RunCrons against a stub
+// service: the `on_start: true` job must fire immediately (its interval is
+// 1h, so a tick can't explain it) and RunCrons must return once ctx is
+// cancelled.
+func TestGenerate_CronIntegration(t *testing.T) {
+	dir := writeModule(t, generateExample(t))
+
+	const testSrc = `package gen
+
+import (
+	"context"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+type cronService struct {
+	Service
+	cleanups atomic.Int32
+}
+
+func (s *cronService) CleanupSessions(ctx context.Context) error {
+	s.cleanups.Add(1)
+	return nil
+}
+
+func (s *cronService) SyncStock(ctx context.Context) error { return nil }
+
+func TestRunCronsOnStart(t *testing.T) {
+	svc := &cronService{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		RunCrons(ctx, svc)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for svc.cleanups.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("cleanup-sessions has on_start: true but was not called")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunCrons did not return after ctx was cancelled")
+	}
+
+	if got := svc.cleanups.Load(); got != 1 {
+		t.Fatalf("cleanup-sessions called %d times, want exactly 1 (its interval is 1h)", got)
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "gen", "crons_integration_test.go"), []byte(testSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("go", "test", "./...")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go test ./... failed: %v\n%s", err, out)
+	}
+}
+
+// TestGenerate_NoCronsStillEmitsCrons checks that crons.go is emitted (and
+// compiles) for a contract without any `crons:` block. It's emitted
+// unconditionally on purpose: `apic generate` never deletes files, so a
+// conditionally emitted crons.go would linger forever — and be reported as
+// stale by `apic diff` — the moment someone drops their crons: block.
+func TestGenerate_NoCronsStillEmitsCrons(t *testing.T) {
+	files := generateYAML(t, `
+version: 1
+service: Service
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+          resp:
+            status: str!
+`)
+	if _, ok := files["crons.go"]; !ok {
+		t.Fatal("crons.go must be emitted even when the contract has no crons")
+	}
+
+	dir := writeModule(t, files)
+	for _, args := range [][]string{{"build", "./..."}, {"vet", "./..."}} {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("go %v failed: %v\n%s", args, err, out)
 		}
 	}
 }

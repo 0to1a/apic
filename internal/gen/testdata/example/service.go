@@ -11,4 +11,9 @@ type Service interface {
 	GetPostsByID(ctx context.Context, req *GetPostsByIDRequest) (*Post, error)
 	DeletePostsByID(ctx context.Context, req *DeletePostsByIDRequest) error
 	GetPostsByIDComments(ctx context.Context, req *GetPostsByIDCommentsRequest) (*GetPostsByIDCommentsResponse, error)
+
+	// cleanup-sessions runs every 1h, and once at startup.
+	CleanupSessions(ctx context.Context) error
+	// sync-inventory runs every 30s.
+	SyncStock(ctx context.Context) error
 }

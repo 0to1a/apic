@@ -3,6 +3,7 @@ package ir
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/0to1a/apic/internal/contract"
 )
@@ -215,4 +216,42 @@ func keys(m map[string]RouteIR) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestResolve_Crons(t *testing.T) {
+	c, err := contract.Parse([]byte(`
+version: 1
+service: Service
+crons:
+  - cleanup-sessions:
+      every: 1h
+      on_start: true
+  - sync-inventory:
+      every: 30s
+      name: SyncStock
+groups:
+  - prefix: /
+    use: []
+    routes:
+      - GET /health:
+`))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	resolved, err := Resolve(c)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	want := []CronIR{
+		{Label: "cleanup-sessions", MethodName: "CleanupSessions", Every: time.Hour, EverySrc: "1h", OnStart: true},
+		{Label: "sync-inventory", MethodName: "SyncStock", Every: 30 * time.Second, EverySrc: "30s"},
+	}
+	if len(resolved.Crons) != len(want) {
+		t.Fatalf("got %d crons, want %d: %+v", len(resolved.Crons), len(want), resolved.Crons)
+	}
+	for i, w := range want {
+		if resolved.Crons[i] != w {
+			t.Errorf("cron %d = %+v, want %+v", i, resolved.Crons[i], w)
+		}
+	}
 }

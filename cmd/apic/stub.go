@@ -86,10 +86,10 @@ func writeStubs(dir, out string, resolved *ir.ContractIR, stdout io.Writer) erro
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "package main\n\n")
-	// "context" is only used inside per-route method bodies, so a contract
+	// "context" is only used inside per-route and per-cron method bodies, so a contract
 	// with a group but zero routes at all (a genuinely degenerate case)
 	// would otherwise leave it unused and fail to compile.
-	if len(resolved.Routes) > 0 {
+	if len(resolved.Routes) > 0 || len(resolved.Crons) > 0 {
 		fmt.Fprintf(&b, "import (\n\t\"context\"\n\n\t%q\n)\n\n", importPath)
 	} else {
 		fmt.Fprintf(&b, "import (\n\t%q\n)\n\n", importPath)
@@ -103,6 +103,11 @@ func writeStubs(dir, out string, resolved *ir.ContractIR, stdout io.Writer) erro
 			fmt.Fprintf(&b, "func (serviceImpl) %s(ctx context.Context, req *%s.%s) (*%s.%s, error) {\n\treturn nil, %s.Errorf(%s.Unimplemented, %q)\n}\n\n",
 				r.MethodName, pkgName, r.Request.Name, pkgName, r.ResponseType, pkgName, pkgName, "TODO: implement "+r.MethodName)
 		}
+	}
+
+	for _, cr := range resolved.Crons {
+		fmt.Fprintf(&b, "func (serviceImpl) %s(ctx context.Context) error {\n\treturn %s.Errorf(%s.Unimplemented, %q)\n}\n\n",
+			cr.MethodName, pkgName, pkgName, "TODO: implement "+cr.MethodName)
 	}
 
 	formatted, err := format.Source([]byte(b.String()))
