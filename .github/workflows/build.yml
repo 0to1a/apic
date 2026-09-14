@@ -1,0 +1,44 @@
+name: Build binaries
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            binary: apic-linux-amd64
+          - os: darwin
+            arch: amd64
+            binary: apic-darwin-amd64
+          - os: darwin
+            arch: arm64
+            binary: apic-darwin-arm64
+          - os: windows
+            arch: amd64
+            binary: apic-windows-amd64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test ./...
+      - run: go build -trimpath -o dist/${{ matrix.binary }} ./cmd/apic
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: dist/${{ matrix.binary }}
