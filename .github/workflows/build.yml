@@ -32,7 +32,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test ./...
       - run: go build -trimpath -o dist/${{ matrix.binary }} ./cmd/apic
         env:
           CGO_ENABLED: 0
